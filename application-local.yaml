@@ -1,0 +1,23 @@
+server:
+  port: 8080
+
+app:
+  sqs:
+    input-queue: pizza-order
+    output-queue: pizza-order-out
+
+external:
+  base-url: http://localhost:8080
+  auth:
+    url: http://localhost:8080/oauth/token
+    client-id: local-id
+    client-secret: local-secret
+    scope: default
+  process-path: /process
+  timeout-ms: 5000
+
+aws:
+  region: us-east-1
+  endpoint: http://localhost:4566
+  accessKey: test
+  secretKey: test
