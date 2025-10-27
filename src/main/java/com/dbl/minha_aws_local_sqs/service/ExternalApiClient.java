@@ -1,6 +1,7 @@
 package com.dbl.minha_aws_local_sqs.service;
 
-import com.dbl.minha_aws_local_sqs.error.ExternalServiceException;
+import com.dbl.minha_aws_local_sqs.dto.ProcessRequest;
+import com.dbl.minha_aws_local_sqs.dto.ProcessResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatusCode;
@@ -15,35 +16,35 @@ import java.time.Duration;
 @RequiredArgsConstructor
 public class ExternalApiClient {
 
-    // fornecido por WebClientConfig
-    private final WebClient apiClient;
+    private final WebClient apiClient; // definido em WebClientConfig
 
-    public ProcessResponse callProcess(String token, ProcessRequest req) {
+    /**
+     * Chama /process depois de já ter o token.
+     * - Para qualquer status HTTP, retorna um ProcessResponse
+     *   preenchendo httpStatus e details (corpo como String).
+     * - Se 200, joga o corpo também em 'payload' para frente.
+     */
+    public ProcessResponse callProcess(String bearerToken, ProcessRequest req) {
         return apiClient.post()
                 .uri("/process")
-                .headers(h -> h.setBearerAuth(token))
+                .headers(h -> h.setBearerAuth(bearerToken))
                 .bodyValue(req)
-                .retrieve()
-                .onStatus(HttpStatusCode::is4xxClientError, resp ->
-                        resp.bodyToMono(String.class).defaultIfEmpty("<empty>")
-                                .flatMap(b -> {
-                                    log.warn("4xx from /process body={}", b);
-                                    return Mono.error(new ExternalServiceException("4xx from process: " + b));
-                                })
-                )
-                .onStatus(HttpStatusCode::is5xxServerError, resp ->
-                        resp.bodyToMono(String.class).defaultIfEmpty("<empty>")
-                                .flatMap(b -> {
-                                    log.error("5xx from /process body={}", b);
-                                    return Mono.error(new ExternalServiceException("5xx from process: " + b));
-                                })
-                )
-                .bodyToMono(ProcessResponse.class)
-                .timeout(Duration.ofSeconds(8))   // -> lança java.util.concurrent.TimeoutException
+                .exchangeToMono(resp -> {
+                    int sc = resp.statusCode().value();
+                    // lê corpo como String e mapeia para nosso DTO
+                    return resp.bodyToMono(String.class)
+                            .defaultIfEmpty("")
+                            .map(body -> {
+                                if (HttpStatusCode.valueOf(sc).is2xxSuccessful()) {
+                                    // sucesso → payload preenchido, details "OK"
+                                    return new ProcessResponse(sc, "OK", body);
+                                } else {
+                                    // erro → details = corpo, payload null
+                                    return new ProcessResponse(sc, body, null);
+                                }
+                            });
+                })
+                .timeout(Duration.ofSeconds(8))
                 .block();
     }
-
-    // DTOs do contrato externo
-    public static record ProcessRequest(String id, String payload, String metadata, String placaOuChassi) {}
-    public static record ProcessResponse(String status, String details) {}
 }

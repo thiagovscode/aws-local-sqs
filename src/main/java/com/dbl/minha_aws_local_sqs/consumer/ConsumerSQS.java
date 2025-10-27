@@ -22,60 +22,44 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class ConsumerSQS {
 
-    private final ProcessingService processing;     // regra de negócio
-    private final SqsMessagePublisher publisher;    // publica na fila de saída
-    private final ObjectMapper objectMapper;        // parse JSON
+    private final ProcessingService processing;
+    private final SqsMessagePublisher publisher;
+    private final ObjectMapper objectMapper;
 
     @SqsListener("${app.sqs.input-queue:pizza-order}")
     public void listen(String body, @Headers Map<String, Object> headers) {
-        final String messageId = (String) headers.get("MessageId");
+
+        final String messageId    = (String) headers.get("MessageId");
         final String receiveCount = (String) headers.get("ApproximateReceiveCount");
-        final String sentAt = (String) headers.get("SentTimestamp");
+        final String sentTs       = (String) headers.get("SentTimestamp");
         final long t0 = System.currentTimeMillis();
 
-        log.info("msgId={} attempts={} sentAt={} took={}ms",
-                messageId,
-                receiveCount,
-                sentAt,
-                System.currentTimeMillis() - t0
-        );
+        log.info("SQS received id={} attempts={} sentTs={} bodyLen={}",
+                messageId, receiveCount, sentTs, body == null ? 0 : body.length());
 
         try {
-            // 1) parse resiliente
             SolicitacaoVeicular msg = tryParse(body);
-
-            // 2) validação de campos obrigatórios
             validate(msg);
 
-            // 3) processa
             SaidaProcessamento saida = processing.process(msg);
-
-            // 4) publica
             publisher.publish(saida);
 
-            log.info("SQS processed messageId={} corrId={} in {}ms",
-                    messageId, msg.id(), System.currentTimeMillis() - t0);
+            log.info("SQS processed id={} corrId={} status={} in {}ms",
+                    messageId, saida.correlationId(), saida.status(), System.currentTimeMillis() - t0);
 
         } catch (ParsingException | ValidationException e) {
-            // Erro “do cliente” (payload ruim). Normalmente NÃO vale reprocessar.
-            log.warn("Discarding messageId={} due to client error: {}", messageId, e.getMessage());
-            // Se quiser, envie para uma fila de erro da aplicação:
-            // errorPublisher.publish(new ErrorEnvelope(messageId, body, e.getMessage(), Instant.now()));
-            // Não relançar => evita retry infinito.
+            log.warn("Discarding id={} due to client error: {}", messageId, e.getMessage());
         } catch (ExternalServiceException e) {
-            // Dependência externa falhou (HTTP/timeout) → relança para retry/redrive DLQ nativa.
-            log.error("External dependency failure for messageId={}: {}", messageId, e.getMessage(), e);
+            log.error("External failure id={}: {}", messageId, e.getMessage(), e);
             throw e;
         } catch (Exception e) {
-            // Falha inesperada → relança (também vai para retry/DLQ).
-            log.error("Unexpected error for messageId={}", messageId, e);
+            log.error("Unexpected error id={}", messageId, e);
             throw e;
         }
     }
 
-    /**
-     * Validação simples de required fields.
-     */
+    // ---- helpers ----
+
     private void validate(SolicitacaoVeicular msg) {
         if (msg == null) throw new ValidationException("Mensagem nula");
         if (isBlank(msg.id())) throw new ValidationException("Campo 'id' obrigatório");
@@ -83,24 +67,14 @@ public class ConsumerSQS {
         if (isBlank(msg.produto())) throw new ValidationException("Campo 'produto' obrigatório");
     }
 
-    private boolean isBlank(String s) {
-        return s == null || s.isBlank();
-    }
+    private boolean isBlank(String s) { return s == null || s.isBlank(); }
 
-    /**
-     * Tenta JSON; fallback para "chave: valor"; depois 3 linhas (id/placaOuChassi/produto).
-     */
     private SolicitacaoVeicular tryParse(String body) {
-        if (body == null || body.isBlank()) {
-            throw new ParsingException("Body vazio");
-        }
+        if (body == null || body.isBlank()) throw new ParsingException("Body vazio");
 
         // 1) JSON
-        try {
-            return objectMapper.readValue(body, SolicitacaoVeicular.class);
-        } catch (Exception ignored) {
-            // segue para fallback
-        }
+        try { return objectMapper.readValue(body, SolicitacaoVeicular.class); }
+        catch (Exception ignore) { /* fallback */ }
 
         // 2) "chave: valor"
         Map<String, String> map = new LinkedHashMap<>();
@@ -109,26 +83,21 @@ public class ConsumerSQS {
             if (i > 0) map.put(l.substring(0, i).trim().toLowerCase(), l.substring(i + 1).trim());
         });
         if (!map.isEmpty()) {
-            String id = first(map, "id", "id transacao", "id_transacao");
+            String id  = first(map, "id", "id transacao", "id_transacao");
             String poc = first(map, "placa ou chassi", "placa_ou_chassi", "placa", "chassi");
-            String prod = first(map, "produto", "payload");
-            if (!isBlank(id) && !isBlank(poc) && !isBlank(prod)) {
+            String prod= first(map, "produto", "payload");
+            if (!isBlank(id) && !isBlank(poc) && !isBlank(prod))
                 return new SolicitacaoVeicular(id, poc, prod);
-            }
         }
 
-        // 3) 3 linhas simples (id / placaOuChassi / produto)
+        // 3) 3 linhas
         String[] lines = body.split("\\R");
-        if (lines.length >= 3) {
+        if (lines.length >= 3)
             return new SolicitacaoVeicular(lines[0].trim(), lines[1].trim(), lines[2].trim());
-        }
 
         throw new ParsingException("Formato de payload não reconhecido");
     }
 
-    /**
-     * Retorna o primeiro valor não vazio entre várias chaves alternativas.
-     */
     private static String first(Map<String, String> map, String... keys) {
         for (String k : keys) {
             String v = map.get(k);

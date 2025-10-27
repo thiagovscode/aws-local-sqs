@@ -1,18 +1,21 @@
 package com.dbl.minha_aws_local_sqs.dto;
 
-import com.dbl.minha_aws_local_sqs.service.ExternalApiClient.ProcessResponse;
-
 public record SaidaProcessamento(
-        String id,
-        String placaOuChassi,
-        String produto,
-        String status,
-        String detalhes
+        String correlationId,
+        int status,
+        String message,
+        Object data
 ) {
-    public static SaidaProcessamento of(SolicitacaoVeicular in, ProcessResponse resp) {
-        return new SaidaProcessamento(
-                in.id(), in.placaOuChassi(), in.produto(), resp.status(), resp.details()
-        );
+    public static SaidaProcessamento success(SolicitacaoVeicular msg, String message, Object data) {
+        return new SaidaProcessamento(msg.id(), 200, message, data);
+    }
+    public static SaidaProcessamento failure(SolicitacaoVeicular msg, String message) {
+        return new SaidaProcessamento(msg.id(), 400, message, null);
+    }
+    public static SaidaProcessamento notFound(SolicitacaoVeicular msg, String message) {
+        return new SaidaProcessamento(msg.id(), 404, message, null);
+    }
+    public static SaidaProcessamento error(SolicitacaoVeicular msg, String message) {
+        return new SaidaProcessamento(msg.id(), 500, message, null);
     }
 }
-
