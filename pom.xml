@@ -1,8 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project xmlns="http://maven.apache.org/POM/4.0.0"
 		 xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-		 xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
-                             http://maven.apache.org/xsd/maven-4.0.0.xsd">
+		 xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
 
 	<modelVersion>4.0.0</modelVersion>
 	<groupId>com.example</groupId>
@@ -11,14 +10,6 @@
 	<name>sqs-app</name>
 	<description>SQS LocalStack App</description>
 
-	<!--  AQUI definimos Java 17 -->
-	<properties>
-		<java.version>17</java.version>
-		<maven.compiler.release>17</maven.compiler.release>
-		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-	</properties>
-
-	<!-- Spring Boot parent -->
 	<parent>
 		<groupId>org.springframework.boot</groupId>
 		<artifactId>spring-boot-starter-parent</artifactId>
@@ -26,17 +17,41 @@
 		<relativePath/>
 	</parent>
 
-	<dependencies>
+	<properties>
+		<java.version>17</java.version>
+		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+	</properties>
 
+	<dependencyManagement>
+		<dependencies>
+			<!-- BOM do Spring Cloud AWS (controla todas as versões 3.1.1) -->
+			<dependency>
+				<groupId>io.awspring.cloud</groupId>
+				<artifactId>spring-cloud-aws-dependencies</artifactId>
+				<version>3.1.1</version>
+				<type>pom</type>
+				<scope>import</scope>
+			</dependency>
+		</dependencies>
+	</dependencyManagement>
+
+	<dependencies>
+		<!-- WebFlux: WebClient -->
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-webflux</artifactId>
 		</dependency>
 
-		<!-- REST / Web -->
+		<!-- (Opcional) MVC; pode remover se não usa controllers Servlet -->
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-web</artifactId>
+		</dependency>
+
+		<!-- Spring Cloud AWS SQS (starter completo) -->
+		<dependency>
+			<groupId>io.awspring.cloud</groupId>
+			<artifactId>spring-cloud-aws-starter-sqs</artifactId>
 		</dependency>
 
 		<!-- Lombok (opcional) -->
@@ -44,12 +59,6 @@
 			<groupId>org.projectlombok</groupId>
 			<artifactId>lombok</artifactId>
 			<optional>true</optional>
-		</dependency>
-
-		<!-- AWS SQS (versão compatível Java 17) -->
-		<dependency>
-			<groupId>io.awspring.cloud</groupId>
-			<artifactId>spring-cloud-aws-starter-sqs</artifactId>
 		</dependency>
 
 		<!-- Testes -->
@@ -62,44 +71,26 @@
 
 	<build>
 		<plugins>
-
-			<!--  Plugin de compilação Java 17 -->
 			<plugin>
 				<groupId>org.apache.maven.plugins</groupId>
 				<artifactId>maven-compiler-plugin</artifactId>
 				<version>3.11.0</version>
 				<configuration>
-					<release>${maven.compiler.release}</release>
+					<release>17</release>
+					<parameters>true</parameters>
 				</configuration>
 			</plugin>
 
-			<!-- Plugin para rodar o App via Maven -->
 			<plugin>
 				<groupId>org.springframework.boot</groupId>
 				<artifactId>spring-boot-maven-plugin</artifactId>
 			</plugin>
 
-			<!--  Suporte legal para testes JUnit 5 -->
 			<plugin>
 				<groupId>org.apache.maven.plugins</groupId>
 				<artifactId>maven-surefire-plugin</artifactId>
 				<version>3.2.5</version>
 			</plugin>
-
 		</plugins>
 	</build>
-
-	<!-- ️ Spring Cloud AWS BOM (versões corretas) -->
-	<dependencyManagement>
-		<dependencies>
-			<dependency>
-				<groupId>io.awspring.cloud</groupId>
-				<artifactId>spring-cloud-aws-dependencies</artifactId>
-				<version>3.1.1</version>
-				<type>pom</type>
-				<scope>import</scope>
-			</dependency>
-		</dependencies>
-	</dependencyManagement>
-
 </project>
